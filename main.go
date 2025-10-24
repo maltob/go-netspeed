@@ -33,10 +33,9 @@ var (
 )
 
 const (
-	globalMaxDownloadSizeMB = 100
+	globalMaxDownloadSizeMB = 1024
 	localOverrideDir        = "static" // Directory to check for local overrides
 	embeddedPrefix          = "static" // Prefix under which files are embedded
-	portPlaceholder         = "{SERVER_PORT}"
 )
 
 // STUN server configuration for ICE negotiation (required for Pion WebRTC)
@@ -274,22 +273,7 @@ func serveHybridFile(w http.ResponseWriter, r *http.Request, port int, path stri
 		return
 	}
 
-	// 4. Handle Index.html port injection (only for index.html)
-	if fileName == "index.html" { // Check for just "index.html"
-		if *verbose {
-			log.Printf("Serving embedded index.html with port injection.")
-		}
-
-		// Perform the port injection
-		contentStr := strings.Replace(string(content), portPlaceholder, strconv.Itoa(port), 1)
-		content = []byte(contentStr)
-	} else {
-		if *verbose {
-			log.Printf("Serving embedded file: %s", embedPath)
-		}
-	}
-
-	// 5. Set Content-Type based on extension
+	// 4. Set Content-Type based on extension
 	contentType := "text/plain"
 	switch filepath.Ext(fileName) {
 	case ".html":
