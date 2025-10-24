@@ -1,5 +1,5 @@
 # Go-NetSpeed
-A single file speedtest utility, generated with AI assistance for my own use.
+A single file speedtest utility, allowing for a quick test of speed between a server system and clients on web browsers. _Generated with AI assistance for my own use._
 
 ## Usage
 1. Run the server executable - allowing firewall access as needed
