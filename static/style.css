@@ -1,0 +1,37 @@
+/*
+ * Custom CSS for Go Netspeed
+ * Tailwind classes are used inline in index.html, this is for custom styles only.
+ */
+
+body { 
+    font-family: 'Inter', sans-serif; 
+    background-color: #f7f9fc; 
+}
+
+.card { 
+    background: white; 
+    border-radius: 12px; 
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); 
+}
+
+.btn-primary { 
+    background-color: #1e40af; 
+    color: white; 
+    transition: background-color 0.2s; 
+}
+/* DISABLED Button Style (NEW) */
+.btn-primary:disabled {
+    background-color: #9ca3af; /* gray-400 */
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+
+.btn-primary:hover:not(:disabled) {
+    background-color: #4338ca; /* indigo-700 */
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+}
+
+.loader { 
+    border-top-color: #1e40af; 
+}

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go Netspeed</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css" />
+    <script src="speedtest.js"></script>
+</head>
+<body class="p-4 sm:p-8 bg-gray-50 min-h-screen flex flex-col items-center">
+    <div class="w-full max-w-4xl">
+        <header class="text-center mb-10 p-4">
+            <h1 class="text-4xl font-extrabold text-gray-900">Go Netspeed</h1>
+            <p class="text-lg text-gray-600 mt-2">Local and easy speed, latency, jitter, and packet loss testing.</p>
+        </header>
+
+        <!-- Configuration Controls -->
+        <div class="card p-6 mb-8">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">Test Configuration (Max 100 MB)</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                <div>
+                    <label for="download-size" class="block text-sm font-medium text-gray-700 mb-1">Download Test Size (MB)</label>
+                    <input type="number" id="download-size" value="50" min="1" max="100" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-blue-500 focus:border-blue-500" onchange="validateSize(this, 100)">
+                </div>
+                <div>
+                    <label for="upload-size" class="block text-sm font-medium text-gray-700 mb-1">Upload Test Size (MB)</label>
+                    <input type="number" id="upload-size" value="20" min="1" max="100" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-blue-500 focus:border-blue-500" onchange="validateSize(this, 100)">
+                </div>
+            </div>
+            <button id="start-test-btn" onclick="runAllTests()" class="w-full btn-primary px-8 py-3 text-lg font-semibold rounded-lg shadow-md hover:shadow-lg transition duration-200 focus:outline-none focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50">
+                Start Full Test
+            </button>
+        </div>
+        
+        <!-- Results Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- Latency Test Card -->
+            <div class="card p-6 border-l-4 border-blue-600">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4 flex justify-between items-center">
+                    Latency (RTT)
+                </h2>
+                <p class="text-gray-600">Measures the round trip time via simple HTTP pings.</p>
+                <div class="mt-4 flex flex-col space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xl text-gray-700">Result:</span>
+                        <span id="latency-result" class="text-2xl text-gray-500 font-medium">N/A</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <div id="latency-loader" class="loader ease-linear rounded-full border-2 border-t-2 border-gray-200 h-4 w-4 hidden animate-spin"></div>
+                        <span id="latency-status" class="text-sm text-gray-500">Ready</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Download Speed Card -->
+            <div class="card p-6 border-l-4 border-green-600">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Download Speed</h2>
+                <p class="text-gray-600">Measures the speed of receiving the configured data size.</p>
+                <div class="mt-4 flex flex-col space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xl text-gray-700">Result:</span>
+                        <span id="download-result" class="text-2xl text-gray-500 font-medium">N/A</span>
+                    </div>
+                     <div class="flex items-center space-x-2">
+                        <div id="download-loader" class="loader ease-linear rounded-full border-2 border-t-2 border-gray-200 h-4 w-4 hidden animate-spin"></div>
+                        <span id="download-status" class="text-sm text-gray-500">Ready</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upload Speed Card -->
+            <div class="card p-6 border-l-4 border-yellow-600">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Upload Speed</h2>
+                <p class="text-gray-600">Measures the speed of sending the configured data blob to the server.</p>
+                <div class="mt-4 flex flex-col space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xl text-gray-700">Result:</span>
+                        <span id="upload-result" class="text-2xl text-gray-500 font-medium">N/A</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <div id="upload-loader" class="loader ease-linear rounded-full border-2 border-t-2 border-gray-200 h-4 w-4 hidden animate-spin"></div>
+                        <span id="upload-status" class="text-sm text-gray-500">Ready</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- WebRTC Jitter/Loss Card -->
+            <div class="card p-6 border-l-4 border-red-600">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Jitter & Packet Loss (WebRTC)</h2>
+                <p class="text-gray-600">Uses WebRTC DataChannel echo to calculate real-time metrics.</p>
+                <div class="mt-4 flex flex-col space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xl text-gray-700">Jitter:</span>
+                        <span id="jitter-result" class="text-2xl text-gray-500 font-medium">N/A</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xl text-gray-700">Loss:</span>
+                        <span id="loss-result" class="text-2xl text-gray-500 font-medium">N/A</span>
+                    </div>
+                     <div class="flex items-center space-x-2">
+                        <div id="jitter-loader" class="loader ease-linear rounded-full border-2 border-t-2 border-gray-200 h-4 w-4 hidden animate-spin"></div>
+                        <span id="jitter-status" class="text-sm text-gray-500">Ready</span>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+        <!-- History Section -->
+        <div class="mt-10 card p-6">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Test History (Last 5)</h2>
+            <div id="history-list" class="space-y-3">
+                <!-- History items will be inserted here by script.js -->
+                <p class="text-gray-500">Loading history...</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
