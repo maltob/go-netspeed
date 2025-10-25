@@ -11,7 +11,9 @@ A single file speedtest utility, allowing for a quick test of speed between a se
 | Flag | Description | Default Value |
 | -- | -- | -- |
 | port  | The port to run the server on. | 8080 |
-| maxDownloadSize  | Maximum download size in MB (capped at 1024 MB). | 100 |
-| downloadChunkSize  |  Download chunk size in bytes, lower it for lower RAM utilization | 1048576 |
+| maxsize  | Maximum download size in MB (capped at 1024 MB). | 100 |
+| chunksize  |  Download chunk size in bytes, lower it for lower RAM utilization | 1048576 |
+| webrtc-min-port  | Min port for WebRTC connections. Useful for docker. | 0 |
+| webrtc-max-port  | Max port for WebRTC connections. Useful for docker.  | 0 |
 | verbose  |  Pass -verbose to get connection messages | false |
 
