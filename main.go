@@ -29,6 +29,8 @@ var (
 	port              = flag.Int("port", 8080, "The port to run the server on.")
 	maxDownloadSize   = flag.Int64("maxsize", 100, "Maximum download size in MB (capped at 100MB).")
 	downloadChunkSize = flag.Int("chunksize", 1024*1024, "Download chunk size in bytes (default 1MB).")
+	webrtcMinPort     = flag.Int("webrtc-min-port", 0, "Minimum UDP port for WebRTC (0 to disable specific range).")
+	webrtcMaxPort     = flag.Int("webrtc-max-port", 0, "Maximum UDP port for WebRTC (0 to disable specific range).")
 	verbose           = flag.Bool("verbose", false, "Enable verbose logs for files being served and connections")
 )
 
@@ -38,14 +40,17 @@ const (
 	embeddedPrefix          = "static" // Prefix under which files are embedded
 )
 
-// STUN server configuration for ICE negotiation (required for Pion WebRTC)
-var peerConnectionConfig = webrtc.Configuration{
-	ICEServers: []webrtc.ICEServer{
-		{
-			URLs: []string{"stun:stun.l.google.com:19302"},
+// STUN server configuration for ICE negotiation (required for Pion WebRTC) and global webRTC object
+var (
+	peerConnectionConfig = webrtc.Configuration{
+		ICEServers: []webrtc.ICEServer{
+			{
+				URLs: []string{"stun:stun.l.google.com:19302"},
+			},
 		},
-	},
-}
+	}
+	webrtcAPI *webrtc.API
+)
 
 // --- Handlers for Network Tests ---
 
@@ -156,7 +161,7 @@ func webrtcOfferHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 1. Create a new PeerConnection
-	peerConnection, err := webrtc.NewPeerConnection(peerConnectionConfig)
+	peerConnection, err := webrtcAPI.NewPeerConnection(peerConnectionConfig)
 	if err != nil {
 		log.Printf("Failed to create PeerConnection: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -323,6 +328,20 @@ func main() {
 		*maxDownloadSize = globalMaxDownloadSizeMB
 		log.Printf("Max download size capped at global maximum: %dMB", globalMaxDownloadSizeMB)
 	}
+
+	// 2. Configure WebRTC Ephemeral Port Range
+	s := webrtc.SettingEngine{}
+
+	if *webrtcMinPort != 0 && *webrtcMaxPort != 0 && *webrtcMinPort < *webrtcMaxPort {
+		// Set the UDP port range for ICE/WebRTC
+		s.SetEphemeralUDPPortRange(uint16(*webrtcMinPort), uint16(*webrtcMaxPort))
+		log.Printf("WebRTC constrained to UDP port range: %d-%d", *webrtcMinPort, *webrtcMaxPort)
+	} else if *webrtcMinPort != 0 || *webrtcMaxPort != 0 {
+		log.Printf("Warning: WebRTC port range flags provided but ignored (min=%d, max=%d). Must provide a valid min < max range.", *webrtcMinPort, *webrtcMaxPort)
+	}
+
+	// Initialize the global API instance with the configured settings
+	webrtcAPI = webrtc.NewAPI(webrtc.WithSettingEngine(s))
 
 	// Setup multiplexer and routes
 	mux := http.NewServeMux()
