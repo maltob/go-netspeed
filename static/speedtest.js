@@ -124,11 +124,11 @@ function saveHistory(result) {
     // Prepare the item for saving, ensuring consistent structure
     const historyItem = {
         timestamp: new Date().toLocaleString(),
-        latency: result.latency ? result.latency.toFixed(2) + ' ms' : 'N/A',
-        download: result.download ? result.download.toFixed(2) + ' Mbps' : 'N/A',
-        upload: result.upload ? result.upload.toFixed(2) + ' Mbps' : 'N/A',
-        jitter: result.jitter ? result.jitter.toFixed(2) + ' ms' : 'N/A',
-        packetLoss: result.packetLoss ? result.packetLoss.toFixed(2) + ' %' : 'N/A',
+        latency: result.latencyMs ? result.latencyMs.toFixed(2) + ' ms' : 'N/A',
+        download: result.downloadSpeedMbps ? result.downloadSpeedMbps.toFixed(2) + ' Mbps' : 'N/A',
+        upload: result.uploadSpeedMbps ? result.uploadSpeedMbps.toFixed(2) + ' Mbps' : 'N/A',
+        jitter: result.jitterMs ? result.jitterMs.toFixed(2) + ' ms' : 'N/A',
+        packetLoss: result.packetLossPercent ? result.packetLossPercent.toFixed(2) + ' %' : 'N/A',
     };
 
     let history = [];
