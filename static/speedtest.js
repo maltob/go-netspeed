@@ -24,6 +24,56 @@ const MAX_HISTORY_ITEMS = 5; // Cap the history to the 5 most recent tests
 let results = {};
 const $ = (id) => document.getElementById(id);
 
+
+function displaySharedResult(data) {
+    updateSharedResult('download-result', data.downloadSpeedMbps.toFixed(2)+' Mbps');
+    updateSharedResult('upload-result', data.uploadSpeedMbps.toFixed(2)+' Mbps');
+    updateSharedResult('latency-result', data.latencyMs+' ms');
+    updateSharedResult('jitter-result', data.jitterMs.toFixed(2)+' ms');
+    updateSharedResult('loss-result', data.packetLossPercent.toFixed(2)+'%');
+
+    document.getElementById('share-url').innerHTML = `
+        <div class="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
+            <span class="text-green-700 font-medium">Viewing Shared Result (ID: ${new URLSearchParams(window.location.search).get('resultId')}).</span>
+        </div>
+    `;
+}
+
+function loadResultFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const resultId = params.get('resultId');
+
+    if (resultId) {
+        //updateStatus(`Loading result ID: ${resultId}...`, 'text-indigo-500');
+        
+        // Prevent running new tests while viewing a shared result
+        document.getElementById('start-test-btn').disabled = true;
+document.getElementById('result-history-div').hidden = true;
+document.getElementById('config-controls').hidden = true;
+        fetch(`/results/${resultId}`)
+            .then(response => {
+                if (!response.ok) throw new Error('Result not found or server error.');
+                return response.json();
+            })
+            .then(data => {
+                displaySharedResult(data);
+            })
+            .catch(error => {
+                console.error("Error loading shared result:", error);
+               
+            });
+    }
+}
+
+
+function updateSharedResult(testName, value, color = 'text-gray-900') {
+    const element = document.getElementById(testName);
+    if (element) {
+        element.innerText = value;
+        element.className = element.className.replace(/text-(green|red|blue|gray)-\d{3}/, color);
+    }
+}
+
 // Utility to update the UI result fields
 const updateResult = (id, value, unit = '') => {
     if ($(id)) {
@@ -33,15 +83,13 @@ const updateResult = (id, value, unit = '') => {
     }
 };
 
+
 const updateStatus = (id, message, loading = false) => {
     const statusElement = $(id);
-    const loaderElement = statusElement.previousElementSibling;
     statusElement.textContent = message;
     statusElement.classList.toggle('text-gray-500', !loading);
     statusElement.classList.toggle('text-blue-600', loading);
-    if (loaderElement && loaderElement.classList.contains('loader')) {
-        loaderElement.classList.toggle('hidden', !loading);
-    }
+
 };
 
 // --- Configuration and Validation ---
@@ -156,22 +204,74 @@ function loadHistory() {
 /**
  * Finalizes the test run by saving history and re-enabling the button.
  */
-function finalizeTest() {
-    const startBtn = document.getElementById('start-test-btn');
-    // Check if we have at least one meaningful result (e.g., latency) before saving
+function finalizeTest(success = true) {
+    const startButton = document.getElementById('start-test-btn');
+    const shareUrlElement = document.getElementById('share-url');
+    shareUrlElement.innerHTML = ''; // Clear previous share link
 
-    if(startBtn.disabled) {
-        if (results.latency || results.download || results.upload) {
-            saveHistory(results);
-        }
-        loadHistory();
-        
-        // Re-enable the button
-    
-        if (startBtn) {
-            startBtn.disabled = false;
-        }
+    if (!success) {
+        // If an early failure occurred (e.g., download failed), update results and enable button.
+        updateResult('download', 'N/A', 'text-gray-500');
+        updateResult('upload', 'N/A', 'text-gray-500');
+        updateResult('latency', 'N/A', 'text-gray-500');
+        updateResult('jitter', 'N/A', 'text-gray-500');
+        updateResult('packet-loss', 'N/A', 'text-gray-500');
+        startButton.disabled = false;
+        return;
     }
+
+    const finalResults = {
+        downloadSpeedMbps: parseFloat(document.getElementById('download-result').innerText) || 0,
+        uploadSpeedMbps: parseFloat(document.getElementById('upload-result').innerText) || 0,
+        latencyMs: parseFloat(document.getElementById('latency-result').innerText) || 0,
+        jitterMs: parseFloat(document.getElementById('jitter-result').innerText) || 0,
+        packetLossPercent: parseFloat(document.getElementById('loss-result').innerText) || 0,
+    };
+
+    // 1. Send results to the server to be saved and get a unique ID
+    fetch(`/save-result`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalResults)
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Failed to save result on server.');
+        return response.json();
+    })
+    .then(data => {
+        const resultId = data.id;
+        if (resultId) {
+            // Construct the shareable URL
+            const currentHostname = window.location.hostname;
+            const portSegment = window.location.port ? `:${window.location.port}` : '';
+            const shareUrl = `${window.location.protocol}//${currentHostname}${portSegment}/?resultId=${resultId}`;
+            
+            // Display the shareable link
+            shareUrlElement.innerHTML = `
+                <div class="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm flex items-center justify-between">
+                    <span class="text-indigo-700 font-medium mr-4">Share URL:</span>
+                    <a id="share-link" href="${shareUrl}" class="truncate text-indigo-600 hover:text-indigo-800 underline flex-grow" target="_blank">${shareUrl}</a>
+                    <button onclick="copyToClipboard('${shareUrl}')" class="ml-4 p-1 rounded-full text-indigo-600 hover:bg-indigo-200 transition duration-150">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2v-2m-4-4l-4 4m0 0l-4-4m4 4V5"></path></svg>
+                    </button>
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        console.error("Error saving or fetching share ID:", error);
+        shareUrlElement.innerHTML = `<p class="text-red-500 mt-4">Failed to save results for sharing.</p>`;
+    })
+    .finally(() => {
+        // Save history (local storage) and re-enable button regardless of server save success
+        if(startButton.disabled) {
+            if (results.latency || results.download || results.upload) {
+            saveHistory(finalResults);
+            startButton.disabled = false;
+            startButton.classList.remove('bg-gray-400', 'cursor-not-allowed');
+            }
+        }
+    });
 }
 
 
@@ -522,4 +622,7 @@ window.onload = () => {
 
     // Load history on page load
     loadHistory();
+
+    // Check if we are loading a shared result URL
+    loadResultFromUrl();
 };

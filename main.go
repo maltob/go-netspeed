@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dgraph-io/badger/v4"
+	"github.com/google/uuid"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -31,7 +33,11 @@ var (
 	downloadChunkSize = flag.Int("chunksize", 1024*1024, "Download chunk size in bytes (default 1MB).")
 	webrtcMinPort     = flag.Int("webrtc-min-port", 0, "Minimum UDP port for WebRTC (0 to disable specific range).")
 	webrtcMaxPort     = flag.Int("webrtc-max-port", 0, "Maximum UDP port for WebRTC (0 to disable specific range).")
-	verbose           = flag.Bool("verbose", false, "Enable verbose logs for files being served and connections")
+
+	// Badger Storage Flags
+	badgerPath = flag.String("badger-path", "badger_data", "Path for Badger KV store (empty string for in-memory mode).")
+
+	verbose = flag.Bool("verbose", false, "Enable verbose logs for files being served and connections")
 )
 
 const (
@@ -49,8 +55,162 @@ var (
 			},
 		},
 	}
-	webrtcAPI *webrtc.API
+	webrtcAPI   *webrtc.API
+	globalStore ResultStore
 )
+
+// TestResult mirrors the data structure sent by the client after a full test run.
+type TestResult struct {
+	Timestamp         time.Time `json:"timestamp"`
+	DownloadSpeedMbps float64   `json:"downloadSpeedMbps"`
+	UploadSpeedMbps   float64   `json:"uploadSpeedMbps"`
+	LatencyMs         float64   `json:"latencyMs"`
+	JitterMs          float64   `json:"jitterMs"`
+	PacketLossPercent float64   `json:"packetLossPercent"`
+}
+
+// ResultStore defines the interface for saving and loading test results.
+type ResultStore interface {
+	Save(result TestResult) (string, error)
+	Load(id string) (TestResult, error)
+	Close() error
+}
+
+// BadgerStore implements ResultStore using the Badger Key-Value database.
+type BadgerStore struct {
+	db *badger.DB
+}
+
+// NewBadgerStore initializes and returns a BadgerStore instance.
+func NewBadgerStore(path string) (*BadgerStore, error) {
+	opts := badger.DefaultOptions(path)
+
+	// If path is empty, set Badger to run entirely in-memory.
+	if path == "" {
+		opts = opts.WithInMemory(true)
+		log.Println("Badger configured for IN-MEMORY storage (data will be lost on exit).")
+	} else {
+		// Ensure the directory exists for file storage
+		if err := os.MkdirAll(path, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create badger directory: %w", err)
+		}
+		log.Printf("Badger configured for FILE storage at: %s", path)
+	}
+
+	db, err := badger.Open(opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open badger db: %w", err)
+	}
+
+	return &BadgerStore{db: db}, nil
+}
+
+// Save generates a unique ID, saves the result, and returns the ID.
+func (s *BadgerStore) Save(result TestResult) (string, error) {
+	id := uuid.New().String()
+
+	result.Timestamp = time.Now() // Use server time for official record
+	data, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+
+	err = s.db.Update(func(txn *badger.Txn) error {
+		return txn.Set([]byte(id), data)
+	})
+
+	if err == nil {
+		log.Printf("Result saved with ID: %s", id)
+	}
+	return id, err
+}
+
+// Load retrieves a result by its unique ID.
+func (s *BadgerStore) Load(id string) (TestResult, error) {
+	var result TestResult
+	err := s.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte(id))
+		if err != nil {
+			return err // badger.ErrKeyNotFound or other errors
+		}
+
+		return item.Value(func(val []byte) error {
+			return json.Unmarshal(val, &result)
+		})
+	})
+
+	if err == badger.ErrKeyNotFound {
+		return TestResult{}, fmt.Errorf("result not found for ID: %s", id)
+	}
+	return result, err
+}
+
+// Close ensures the database connection is closed.
+func (s *BadgerStore) Close() error {
+	return s.db.Close()
+}
+
+// --- API Handlers ---
+const maxRequestSize = 1024 * 1024
+
+// saveResultHandler receives JSON results from the client, saves them, and returns the unique ID.
+func saveResultHandler(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestSize)
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method is supported", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var result TestResult
+	if err := json.NewDecoder(r.Body).Decode(&result); err != nil {
+		log.Printf("Failed to decode test result: %v", err)
+		http.Error(w, "Invalid JSON result format", http.StatusBadRequest)
+		return
+	}
+
+	id, err := globalStore.Save(result)
+	if err != nil {
+		log.Printf("Failed to save result: %v", err)
+		http.Error(w, "Failed to save result", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `{"status": "success", "id": "%s"}`, id)
+}
+
+// loadResultHandler retrieves a result by ID from the URL path (/results/{id}).
+func loadResultHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Only GET method is supported", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract the ID from the path (e.g., /results/123-abc)
+	id := strings.TrimPrefix(r.URL.Path, "/results/")
+	if id == "" {
+		http.Error(w, "Missing result ID", http.StatusBadRequest)
+		return
+	}
+
+	result, err := globalStore.Load(id)
+	if err != nil {
+		if strings.Contains(err.Error(), "result not found") {
+			http.Error(w, "Result not found", http.StatusNotFound)
+		} else {
+			log.Printf("Error loading result ID %s: %v", id, err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		log.Printf("Failed to encode result: %v", err)
+	}
+}
 
 // --- Handlers for Network Tests ---
 
@@ -340,6 +500,15 @@ func main() {
 		log.Printf("Warning: WebRTC port range flags provided but ignored (min=%d, max=%d). Must provide a valid min < max range.", *webrtcMinPort, *webrtcMaxPort)
 	}
 
+	// 3. Configure Global Result Store (Badger)
+	var err error
+	globalStore, err = NewBadgerStore(*badgerPath)
+	if err != nil {
+		log.Fatalf("Failed to initialize Badger KV store: %v", err)
+	}
+	// IMPORTANT: Ensure the database is closed when the main function exits
+	defer globalStore.Close()
+
 	// Initialize the global API instance with the configured settings
 	webrtcAPI = webrtc.NewAPI(webrtc.WithSettingEngine(s))
 
@@ -352,6 +521,9 @@ func main() {
 	mux.HandleFunc("/upload", uploadHandler)
 	mux.HandleFunc("/webrtc/offer", webrtcOfferHandler) // The real WebRTC handler
 
+	// New Storage Routes
+	mux.HandleFunc("/save-result", saveResultHandler)
+	mux.HandleFunc("/results/", loadResultHandler) // Handles /results/{id}
 	// Static file serving (Hybrid: Local/Embedded)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// 1. Normalize root path to index.html
