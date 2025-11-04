@@ -35,3 +35,7 @@ body {
 .loader { 
     border-top-color: #1e40af; 
 }
+
+.share-url {
+    padding-bottom: 1em;
+}
