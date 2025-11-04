@@ -13,8 +13,9 @@ const WEBRTC_CONFIG = {
         { urls: 'stun:stun.l.google.com:19302' }
     ]
 };
-const NUM_PACKETS = 50; // Decreased from 100 to 50
-const PACKET_INTERVAL = 50; // Decreased from 100 ms to 50 ms
+const NUM_PACKETS = 250; 
+const PACKET_INTERVAL = 40; // ms
+const MAX_WAIT_BUFFER = 1000; //ms
 
 // History Constants
 const HISTORY_KEY = 'networkTestHistory';
@@ -445,6 +446,14 @@ function runWebRTCTest() {
         const sendPacket = () => {
             if (packetCounter >= NUM_PACKETS) {
                 clearInterval(intervalId);
+                console.log("All packets sent");
+                //Wait a max period of time for all packets to be received
+                 setTimeout(function(){
+                                clearInterval(intervalId);
+                                dc.close();
+                                console.log("Calculating jitter - timeout reached");
+                                calculateJitterLoss(receivedTimestamps, packetCounter);
+                    },(Date.now() -(startTestTime + NUM_PACKETS * PACKET_INTERVAL + MAX_WAIT_BUFFER)))
                 return;
             }
             const payload = JSON.stringify({
@@ -453,14 +462,16 @@ function runWebRTCTest() {
             });
             dc.send(payload); 
             packetCounter++;
+            updateStatus('jitter-status', 'Connection established. Sending packets...'+packetCounter+'/'+NUM_PACKETS, true);
         };
         
         // Start sending packets
         intervalId = setInterval(sendPacket, PACKET_INTERVAL);
-        
+       
         // Handle echo response from Go server
         dc.onmessage = (event) => {
             receivedCounter++;
+            
             try {
                 const rawData = event.data;
                 let dataString;
@@ -478,10 +489,11 @@ function runWebRTCTest() {
                 receivedTimestamps.push(rtt);
 
                 // Check for test completion
-                // The new timeout is: (50 * 50) + 2000 = 4500 ms
-                if (receivedCounter >= NUM_PACKETS || (packetCounter >= NUM_PACKETS && Date.now() - startTestTime > (NUM_PACKETS * PACKET_INTERVAL + 2000))) {
+                // The new timeout is: (250 * 40) + 1000 = 11000 ms
+                if ((receivedCounter >= NUM_PACKETS) || (packetCounter >= NUM_PACKETS && Date.now() - startTestTime > (NUM_PACKETS * PACKET_INTERVAL + MAX_WAIT_BUFFER))) {
                     clearInterval(intervalId);
                     dc.close();
+                    console.log("Calculating jitter");
                     calculateJitterLoss(receivedTimestamps, packetCounter);
                 }
 

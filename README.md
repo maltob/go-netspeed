@@ -15,5 +15,6 @@ A single file speedtest utility, allowing for a quick test of speed between a se
 | chunksize  |  Download chunk size in bytes, lower it for lower RAM utilization | 1048576 |
 | webrtc-min-port  | Min port for WebRTC connections. Useful for docker. | 0 |
 | webrtc-max-port  | Max port for WebRTC connections. Useful for docker.  | 0 |
+| badger-path | What folder to store the database of shared results | badger_data |
 | verbose  |  Pass -verbose to get connection messages | false |
 
