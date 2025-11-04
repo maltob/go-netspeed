@@ -32,6 +32,13 @@ function displaySharedResult(data) {
     updateSharedResult('jitter-result', data.jitterMs.toFixed(2)+' ms');
     updateSharedResult('loss-result', data.packetLossPercent.toFixed(2)+'%');
 
+    //Hide the "Ready" text
+    document.getElementById("download-status").style.visibility="hidden"
+    document.getElementById("upload-status").style.visibility="hidden"
+    document.getElementById("jitter-status").style.visibility="hidden"
+    document.getElementById("latency-status").style.visibility="hidden"
+
+
     document.getElementById('share-url').innerHTML = `
         <div class="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
             <span class="text-green-700 font-medium">Viewing Shared Result (ID: ${new URLSearchParams(window.location.search).get('resultId')}).</span>
